@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#132923">
+  <title>Starting Character Calculator</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #f2f3eb;
+      color: #132923;
+      font: 1rem/1.45 system-ui, sans-serif;
+    }
+    main { max-width: 58rem; margin: auto; padding: 1rem; }
+    h1, h2, p, dl, dd { margin: 0; }
+    h1 { font: bold clamp(1.7rem, 6vw, 2.65rem)/1.1 Georgia, serif; }
+    h2 { font: bold 1.35rem Georgia, serif; }
+    header p { margin-top: .4rem; color: #486055; }
+    .budget {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: .5rem;
+      margin: 1rem 0;
+      padding: .65rem .85rem;
+      border-radius: .8rem;
+      background: #132923;
+      color: #fff;
+    }
+    output { font-size: 1.3rem; font-weight: 750; font-variant-numeric: tabular-nums; }
+    .panels { display: grid; gap: 1rem; align-items: start; }
+    section {
+      padding: .85rem;
+      background: #fff;
+      border: 1px solid #d6ded3;
+      border-radius: .8rem;
+    }
+    .attribute, .stat {
+      display: grid;
+      align-items: center;
+      gap: .45rem;
+      padding: .45rem 0;
+      border-top: 1px solid #e3e8df;
+    }
+    .attribute { grid-template-columns: 1fr auto auto auto; min-height: 3.65rem; }
+    .stat { grid-template-columns: 1fr auto; }
+    .attribute:first-child, .stat:first-child { margin-top: .55rem; }
+    .cost { display: block; color: #486055; font-size: .8rem; }
+    .score, dd { min-width: 1.7rem; font-weight: 750; text-align: center; font-variant-numeric: tabular-nums; }
+    button {
+      min-width: 44px;
+      min-height: 44px;
+      border: 1px solid #9bb7a6;
+      border-radius: .55rem;
+      background: #e2f0e7;
+      color: #132923;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .attribute button { font-size: 1.25rem; }
+    button:disabled { background: #f4f5f1; border-color: #d6ded3; color: #66776e; cursor: default; }
+    button:focus-visible { outline: 3px solid #467c61; outline-offset: 2px; }
+    #reset { padding: 0 .75rem; }
+    @media (min-width: 43rem) { .panels { grid-template-columns: 1fr 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Starting Character Calculator</h1>
+      <p>Level 1 player character</p>
+    </header>
+    <div class="budget">
+      <span>Points remaining <output id="remaining">60</output><span aria-hidden="true"> / 60</span></span>
+      <button type="button" id="reset">Reset</button>
+    </div>
+    <div class="panels">
+      <section aria-labelledby="attributes-heading">
+        <h2 id="attributes-heading">Attributes</h2>
+        <div id="attributes"></div>
+      </section>
+      <section aria-labelledby="stats-heading">
+        <h2 id="stats-heading">Base derived stats</h2>
+        <dl id="stats"></dl>
+      </section>
+    </div>
+    <noscript>Enable JavaScript to calculate your attributes.</noscript>
+  </main>
+  <script>
+    "use strict";
+
+    // Level 1 player rules from rules_authority/character_attributes_and_statistics.yaml.
+    const startingBudget = 60;
+    const startingScore = 1;
+    const baseLevel = 1;
+    const attributeNames = ["STR", "VIT", "DEX", "AGI", "INT", "SPI", "LUK"];
+    const scores = Object.fromEntries(attributeNames.map(name => [name, startingScore]));
+    let remaining = startingBudget;
+
+    function increaseCost(currentScore) {
+      return Math.floor((currentScore - 1) / 10) + 2;
+    }
+
+    function derivedStats({ STR, VIT, DEX, AGI, INT, SPI, LUK }) {
+      const floor = Math.floor;
+      return {
+        "Max HP": 5 * VIT + 5 * baseLevel,
+        "Max MP": INT + SPI,
+        "Max Stamina": VIT + AGI,
+        "Hit": DEX + floor(LUK / 3) + baseLevel,
+        "Flee": AGI + floor(LUK / 5) + baseLevel,
+        "Perfect Dodge": floor(LUK / 5) + "%",
+        "Melee Attack": STR + floor(DEX / 5) + floor(LUK / 3) + floor(baseLevel / 4),
+        "Ranged Attack": DEX + floor(STR / 5) + floor(LUK / 3) + floor(baseLevel / 4),
+        "Magic Attack": INT + floor(DEX / 5) + floor(LUK / 3) + floor(baseLevel / 4),
+        "Physical Defense": floor(VIT / 2) + floor(AGI / 5) + floor(baseLevel / 2),
+        "Magic Defense": floor(SPI / 2) + floor(INT / 5) + floor(baseLevel / 2),
+        "ASPD": AGI + floor(DEX / 5),
+      };
+    }
+
+    const attributeRows = new Map();
+    const statValues = new Map();
+    const attributesElement = document.querySelector("#attributes");
+    const statsElement = document.querySelector("#stats");
+    const remainingElement = document.querySelector("#remaining");
+    const resetButton = document.querySelector("#reset");
+
+    for (const name of attributeNames) {
+      const row = document.createElement("div");
+      row.className = "attribute";
+      row.innerHTML = `
+        <div><strong>${name}</strong><span class="cost" id="cost-${name}"></span></div>
+        <button type="button" aria-label="Decrease ${name}">−</button>
+        <span class="score" aria-label="${name} score"></span>
+        <button type="button" aria-label="Increase ${name}" aria-describedby="cost-${name}">+</button>
+      `;
+      const [decrease, increase] = row.querySelectorAll("button");
+      attributeRows.set(name, {
+        decrease, increase, score: row.querySelector(".score"), cost: row.querySelector(".cost"),
+      });
+
+      decrease.addEventListener("click", () => {
+        if (scores[name] <= startingScore) return;
+        scores[name] -= 1;
+        remaining += increaseCost(scores[name]);
+        render();
+      });
+
+      increase.addEventListener("click", () => {
+        const cost = increaseCost(scores[name]);
+        if (cost > remaining) return;
+        scores[name] += 1;
+        remaining -= cost;
+        render();
+      });
+
+      attributesElement.append(row);
+    }
+
+    for (const label of Object.keys(derivedStats(scores))) {
+      const row = document.createElement("div");
+      row.className = "stat";
+      const term = document.createElement("dt");
+      term.textContent = label;
+      const value = document.createElement("dd");
+      row.append(term, value);
+      statsElement.append(row);
+      statValues.set(label, value);
+    }
+
+    function render() {
+      remainingElement.textContent = remaining;
+      resetButton.disabled = remaining === startingBudget;
+      for (const [name, row] of attributeRows) {
+        const cost = increaseCost(scores[name]);
+        row.score.textContent = scores[name];
+        row.cost.textContent = "Next " + cost + " points";
+        row.decrease.disabled = scores[name] === startingScore;
+        row.increase.disabled = remaining < cost;
+      }
+      for (const [label, value] of Object.entries(derivedStats(scores))) {
+        statValues.get(label).textContent = value;
+      }
+    }
+
+    resetButton.addEventListener("click", () => {
+      for (const name of attributeNames) scores[name] = startingScore;
+      remaining = startingBudget;
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>
